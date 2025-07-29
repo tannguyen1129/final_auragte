@@ -266,7 +266,7 @@ export default function Home() {
                 <span>Secure</span>
               </div>
               <div className="flex items-center space-x-2">
-                <ArrowPathIcon className="w-4 h-4" />
+                <ArrowPathIcon className="w-5 h-5 text-gray-600 group-hover:rotate-180 transition-transform duration-300" />
                 <span>Real-time</span>
               </div>
             </div>

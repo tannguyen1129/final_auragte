@@ -1,17 +1,39 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { gql, useMutation } from "@apollo/client";
 import FaceAutoCapture from "@/components/FaceAutoCapture";
 import PlateCapture from "@/components/PlateCapture";
+import {
+  SparklesIcon,
+  UserCircleIcon,
+  FaceSmileIcon,
+  CreditCardIcon,
+  CheckBadgeIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  ArrowRightIcon,
+  TruckIcon,
+} from "@heroicons/react/24/outline";
 
+// GraphQL Mutation
 const LOG_ENTRY = gql`
-  mutation LogEntry($faceImages: [String!]!, $plateImage: String!, $vehicleType: String) {
-    logEntry(faceImages: $faceImages, plateImage: $plateImage, vehicleType: $vehicleType) {
+  mutation LogEntry(
+    $faceImages: [String!]!
+    $plateImage: String!
+    $vehicleType: String
+  ) {
+    logEntry(
+      faceImages: $faceImages
+      plateImage: $plateImage
+      vehicleType: $vehicleType
+    ) {
       id
       checkinTime
       licensePlate
       faceIdentity
       status
+      vehicleType
       user {
         role
         vehicleType
@@ -20,190 +42,283 @@ const LOG_ENTRY = gql`
   }
 `;
 
+// Utility function
+const formatTime = (t) =>
+  new Date(t).toLocaleString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
 export default function EntryForm({ setMessage, onSuccess }) {
   const [faceImages, setFaceImages] = useState([]);
   const [plateBase64, setPlateBase64] = useState(null);
   const [platePreview, setPlatePreview] = useState(null);
   const [vehicleType, setVehicleType] = useState("CAR");
-  const [askVehicleType, setAskVehicleType] = useState(false);
-  const [pendingSubmitData, setPendingSubmitData] = useState(null);
+  const [pendingData, setPendingData] = useState(null);
+  const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [captureKey, setCaptureKey] = useState(0);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState({ type: "", text: "" });
+
   const [logEntry] = useMutation(LOG_ENTRY);
 
   const handleAddFaceImage = (base64) => {
     setFaceImages((prev) => [...prev, base64]);
+    setFeedback({ type: "success", text: "Đã chụp ảnh khuôn mặt" });
   };
 
-  useEffect(() => {
-    if (faceImages.length > 0 && faceImages.length < 5) {
-      setMessage(`✅ Đã chụp ${faceImages.length} ảnh khuôn mặt`);
-    }
-  }, [faceImages.length]);
-
-  const handleResetManual = () => {
+  const handleReset = (silent = false) => {
     setFaceImages([]);
     setPlateBase64(null);
     setPlatePreview(null);
-    setMessage("🔁 Đã đặt lại, vui lòng chụp lại từ đầu");
+    setVehicleType("CAR");
+    setPendingData(null);
+    setShowVehicleModal(false);
     setCaptureKey((prev) => prev + 1);
-    setAskVehicleType(false);
-    setPendingSubmitData(null);
-  };
-
-  const handleResetSilent = () => {
-    setFaceImages([]);
-    setPlateBase64(null);
-    setPlatePreview(null);
-    setCaptureKey((prev) => prev + 1);
-    setAskVehicleType(false);
-    setPendingSubmitData(null);
+    setFeedback({ type: "", text: "" });
+    if (!silent) setMessage("🔁 Đã đặt lại, vui lòng chụp lại từ đầu");
   };
 
   const handleSubmit = async () => {
     if (faceImages.length < 5 || !plateBase64) {
-      alert("Cần chụp ít nhất 5 ảnh khuôn mặt và 1 ảnh biển số.");
+      setFeedback({ type: "error", text: "Cần đủ 5 ảnh khuôn mặt và 1 ảnh biển số" });
       return;
     }
+    setSubmitting(true);
+    setFeedback({ type: "", text: "" });
+
     try {
       const { data, errors } = await logEntry({
-        variables: { faceImages, plateImage: plateBase64 },
+        variables: { faceImages, plateImage: plateBase64, vehicleType },
       });
-
-      if (errors?.length || !data) {
+      if (errors?.length || !data?.logEntry) {
         throw new Error(errors?.[0]?.message || "Không nhận diện được.");
       }
 
       const session = data.logEntry;
-      const role = session.user.role;
-      const time = session.checkinTime;
-
-      if (role === "GUEST" && !session.user.vehicleType) {
-        setPendingSubmitData({
+      if (session.status === "PENDING" && session.user?.role === "GUEST") {
+        setPendingData({
           faceImages,
           plateImage: plateBase64,
-          time,
           licensePlate: session.licensePlate,
+          time: session.checkinTime,
         });
-        setAskVehicleType(true);
+        setShowVehicleModal(true);
+        setSubmitting(false);
         return;
       }
 
       setMessage(
-        `✅ Vào lúc ${formatTime(time)} - ${session.licensePlate} (${role === "GUEST" ? "Vãng lai" : "Nhân viên"})`
+        `✅ Vào lúc ${formatTime(session.checkinTime)} - ${session.licensePlate} (${
+          session.user.role === "GUEST" ? "Vãng lai" : "Nhân viên"
+        })`
       );
-      handleResetSilent();
+      setFeedback({ type: "success", text: "Gửi xe thành công!" });
+      handleReset(true);
       onSuccess();
     } catch (err) {
-      console.error("❌ Error:", err);
+      setFeedback({ type: "error", text: err.message || "Lỗi không xác định." });
       setMessage(`❌ ${err.message || "Lỗi không xác định."}`);
     }
+    setSubmitting(false);
   };
 
   const handleSubmitVehicleType = async () => {
+    if (!pendingData || !vehicleType) return;
+    setSubmitting(true);
+    setFeedback({ type: "", text: "" });
     try {
-      const { faceImages, plateImage, time, licensePlate } = pendingSubmitData;
       const { data, errors } = await logEntry({
         variables: {
-          faceImages,
-          plateImage,
+          faceImages: pendingData.faceImages,
+          plateImage: pendingData.plateImage,
           vehicleType,
         },
       });
-
-      if (errors?.length || !data) {
-        throw new Error(errors?.[0]?.message || "Gửi loại xe thất bại.");
+      if (errors?.length || !data?.logEntry) {
+        throw new Error(errors?.[0]?.message || "Không thể ghi nhận loại xe.");
       }
 
       setMessage(
-        `✅ Vào lúc ${formatTime(time)} - ${licensePlate} (Vãng lai - ${vehicleType})`
+        `✅ Vào lúc ${formatTime(pendingData.time)} - ${pendingData.licensePlate} (Vãng lai - ${vehicleType})`
       );
-      handleResetSilent();
+      setFeedback({ type: "success", text: "Đã xác nhận loại xe. Hoàn tất gửi xe." });
+      handleReset(true);
       onSuccess();
     } catch (err) {
-      console.error("❌ Error:", err);
+      setFeedback({ type: "error", text: err.message || "Lỗi gửi lại loại xe." });
       setMessage(`❌ ${err.message || "Lỗi gửi lại loại xe."}`);
     }
+    setSubmitting(false);
+    setShowVehicleModal(false);
   };
 
-  const formatTime = (t) =>
-    new Date(t).toLocaleString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
   return (
-    <div className="mb-8 p-4 border rounded">
-      <h2 className="text-lg font-semibold mb-2">🚗 Gửi xe (Vào)</h2>
+    <div className="max-w-lg mx-auto mb-8 p-6 rounded-2xl shadow-2xl border border-gray-100 bg-white/90 space-y-6 backdrop-blur-md">
+      {/* Header */}
+      <div className="flex items-center justify-center space-x-3">
+        <SparklesIcon className="w-7 h-7 text-blue-500" />
+        <h2 className="text-2xl font-bold text-gray-900">Gửi xe (Check-in)</h2>
+      </div>
 
-      <label className="block font-medium mb-1">🧑 Khuôn mặt (≥ 5 ảnh)</label>
-      <FaceAutoCapture
-        key={captureKey}
-        onCapture={handleAddFaceImage}
-        maxCaptures={5}
-      />
-      <p className="text-sm text-gray-500 mt-1">Đã chụp: {faceImages.length} ảnh</p>
-
-      {faceImages.length >= 5 ? (
-        <>
-          <label className="block font-medium mt-4">🚘 Ảnh biển số xe (qua camera)</label>
-          <PlateCapture
-            onCapture={(base64) => {
-              setPlateBase64(base64);
-              setPlatePreview(`data:image/jpeg;base64,${base64}`);
-              setMessage("✅ Đã chụp ảnh biển số");
-            }}
+      {/* Face Capture Section */}
+      <section className="space-y-2">
+        <label className="flex items-center gap-2 font-medium">
+          <UserCircleIcon className="w-6 h-6 text-purple-600" />
+          Chụp khuôn mặt (ít nhất 5 ảnh)
+        </label>
+        <FaceAutoCapture
+          key={captureKey}
+          onCapture={handleAddFaceImage}
+          maxCaptures={5}
+          disabled={submitting}
+        />
+        <div className="text-sm flex items-center text-gray-700">
+          <FaceSmileIcon className="w-5 h-5 mr-2 text-blue-400" />
+          <b>{faceImages.length}/5</b> ảnh đã chụp
+        </div>
+        {/* Progress bar */}
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div
+            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+            style={{ width: `${(faceImages.length / 5) * 100}%` }}
           />
-          {platePreview && (
-            <img
-              src={platePreview}
-              alt="plate"
-              className="mt-2 max-h-40 rounded shadow"
-            />
-          )}
-        </>
-      ) : (
-        <p className="text-sm text-gray-500 mt-4">
-          📷 Vui lòng chụp đủ 5 ảnh khuôn mặt trước khi chụp biển số.
-        </p>
-      )}
+        </div>
+      </section>
 
-      <div className="mt-4 flex gap-3">
+      {/* Plate Capture Section */}
+      <section className="space-y-2">
+        <label className="flex items-center gap-2 font-medium">
+          <CreditCardIcon className="w-6 h-6 text-green-500" />
+          Chụp biển số xe
+        </label>
+        {faceImages.length >= 5 ? (
+          <>
+            <PlateCapture
+              onCapture={(base64) => {
+                setPlateBase64(base64);
+                setPlatePreview(`data:image/jpeg;base64,${base64}`);
+                setFeedback({ type: "success", text: "Đã chụp ảnh biển số" });
+              }}
+              disabled={submitting}
+            />
+            {platePreview && (
+              <img
+                src={platePreview}
+                alt="Ảnh biển số"
+                className="mt-2 rounded-xl shadow border w-full max-h-40 object-cover"
+              />
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-400">📷 Vui lòng chụp đủ 5 ảnh khuôn mặt trước.</p>
+        )}
+      </section>
+
+      {/* Vehicle Type Section */}
+      <section className="space-y-2">
+        <label className="flex items-center gap-2 font-medium">
+          <TruckIcon className="w-6 h-6 text-yellow-500" />
+          Chọn loại phương tiện
+        </label>
+        <select
+          value={vehicleType}
+          onChange={(e) => setVehicleType(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg py-2 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          disabled={submitting}
+        >
+          <option value="CAR">🚘 Ô tô</option>
+          <option value="BIKE">🏍️ Xe máy</option>
+        </select>
+      </section>
+
+      {/* Action Buttons */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <button
           onClick={handleSubmit}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          disabled={faceImages.length < 5 || !plateBase64}
+          className={`flex items-center justify-center bg-gradient-to-r from-blue-600 to-purple-600 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-50 ${
+            submitting ? "cursor-wait" : ""
+          }`}
+          disabled={faceImages.length < 5 || !plateBase64 || submitting}
+          aria-label="Gửi xe"
         >
-          Gửi xe
+          {submitting ? (
+            <ArrowPathIcon className="w-5 h-5 animate-spin mr-2" />
+          ) : (
+            <ArrowRightIcon className="w-5 h-5 mr-2" />
+          )}
+          {submitting ? "Đang gửi..." : "Gửi xe"}
         </button>
         <button
-          onClick={handleResetManual}
-          className="bg-gray-300 text-black px-4 py-2 rounded"
+          onClick={() => handleReset(false)}
+          className="flex items-center bg-gray-200 font-medium px-5 py-2.5 rounded-xl text-gray-700 shadow-sm hover:bg-gray-300 transition-all"
+          disabled={submitting}
+          aria-label="Bắt đầu lại"
         >
-          🔁 Bắt đầu lại
+          <ArrowPathIcon className="w-5 h-5 mr-1" />
+          Bắt đầu lại
         </button>
       </div>
 
-      {askVehicleType && (
-        <div className="mt-6 p-4 border rounded bg-yellow-50">
-          <p className="mb-2 font-medium">🛵 Chọn loại xe cho khách vãng lai:</p>
-          <select
-            value={vehicleType}
-            onChange={(e) => setVehicleType(e.target.value)}
-            className="border px-3 py-1 rounded"
-          >
-            <option value="CAR">🚗 Ô tô</option>
-            <option value="BIKE">🏍️ Xe máy</option>
-          </select>
-          <button
-            onClick={handleSubmitVehicleType}
-            className="ml-4 bg-green-600 text-white px-4 py-2 rounded"
-          >
-            Xác nhận
-          </button>
+      {/* Feedback */}
+      {feedback.text && (
+        <div
+          className={`flex items-center space-x-2 text-sm rounded-xl p-3 border transition-all duration-300 ${
+            feedback.type === "success"
+              ? "bg-green-50 border-green-200 text-green-700"
+              : feedback.type === "error"
+              ? "bg-red-50 border-red-200 text-red-700"
+              : "bg-yellow-50 border-yellow-200 text-yellow-700"
+          }`}
+        >
+          {feedback.type === "success" && <CheckBadgeIcon className="w-5 h-5" />}
+          {feedback.type === "error" && <XCircleIcon className="w-5 h-5" />}
+          {!feedback.type && <ExclamationTriangleIcon className="w-5 h-5" />}
+          <span>{feedback.text}</span>
+        </div>
+      )}
+
+      {/* Vehicle Type Modal for Guests */}
+      {showVehicleModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-2 font-semibold text-lg text-yellow-900">
+              <ExclamationTriangleIcon className="w-6 h-6" />
+              Xác nhận loại xe cho khách vãng lai
+            </div>
+            <select
+              value={vehicleType}
+              onChange={(e) => setVehicleType(e.target.value)}
+              className="w-full border border-yellow-300 rounded-lg py-2 px-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+              disabled={submitting}
+            >
+              <option value="CAR">🚗 Ô tô</option>
+              <option value="BIKE">🏍️ Xe máy</option>
+            </select>
+            <button
+              onClick={handleSubmitVehicleType}
+              className="w-full bg-gradient-to-r from-green-500 to-teal-500 text-white font-semibold py-2.5 rounded-xl shadow hover:scale-105 transition-all flex items-center justify-center disabled:opacity-50"
+              disabled={submitting || !vehicleType}
+            >
+              {submitting ? (
+                <ArrowPathIcon className="w-5 h-5 animate-spin mr-2" />
+              ) : (
+                <CheckBadgeIcon className="w-5 h-5 mr-2" />
+              )}
+              Xác nhận
+            </button>
+            <button
+              onClick={() => setShowVehicleModal(false)}
+              className="w-full text-gray-500 hover:text-gray-700"
+            >
+              Hủy
+            </button>
+          </div>
         </div>
       )}
     </div>

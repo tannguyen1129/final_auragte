@@ -1,13 +1,18 @@
 const { gql } = require("graphql-tag");
 
 const typeDefs = gql`
+  type Vehicle {
+  plate: String!
+  type: String!
+}  
+
   type User {
     id: ID!
     fullName: String!
     email: String!
     licensePlates: [String]
     role: String!
-    vehicleType: String
+    vehicles: [Vehicle!]!
   }
 
   type ParkingSession {
@@ -53,6 +58,11 @@ const typeDefs = gql`
     licensePlates: [String!]
     vehicleType: String 
   }
+  
+  input VehicleInput {
+  plate: String!
+  type: String!
+}
 
   input UpdateUserInput {
     fullName: String

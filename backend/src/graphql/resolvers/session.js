@@ -100,66 +100,77 @@ module.exports = {
 
   let finalUser;
 
-  try {
-    // 4. Quyết định dùng user cũ hay tạo mới
-    if (
-      faceUser &&
-      plateUser &&
-      faceUser.id === plateUser.id &&
-      faceUser.role === "EMPLOYEE"
-    ) {
-      finalUser = faceUser;
-      console.log("✅ Dùng EMPLOYEE:", finalUser.fullName);
-    } else {
-      finalUser = await User.create({
-        fullName: "Khách vãng lai",
-        email: `guest_${Date.now()}@auragate.vn`,
-        role: "GUEST",
-        faceEmbeddings: result.embeddings,
-        licensePlates: [plateText],
-        vehicleType: vehicleType || null
-      });
-      console.log("🆕 Tạo user GUEST mới:", finalUser.email);
-    }
-
-    // 5. Tạo phiên gửi xe
-    const session = await ParkingSession.create({
-      user: finalUser._id,
-      licensePlate: plateText,
-      faceIdentity: finalUser.fullName,
-      checkinTime: new Date(),
-      status: "IN",
-      vehicleType: finalUser.vehicleType || vehicleType || null
-    });
-
-    // 6. Cập nhật slot bãi nếu là GUEST
-    if (finalUser.role === "GUEST" && vehicleType) {
-      await ParkingStats.updateOne({}, {
-        $inc: {
-          carIn: vehicleType === "CAR" ? 1 : 0,
-          bikeIn: vehicleType === "BIKE" ? 1 : 0
+  // 4. Nếu là nhân viên khớp mặt + biển thì dùng luôn
+  if (
+    faceUser &&
+    plateUser &&
+    faceUser.id === plateUser.id &&
+    faceUser.role === "EMPLOYEE"
+  ) {
+    finalUser = faceUser;
+    console.log("✅ Dùng EMPLOYEE:", finalUser.fullName);
+  } else {
+    // Nếu chưa chọn loại xe thì chỉ trả về kết quả nhận diện chờ người dùng xác nhận
+    if (!vehicleType) {
+      return {
+        id: null,
+        licensePlate: plateText,
+        faceIdentity: "Khách vãng lai",
+        checkinTime: new Date().toISOString(),
+        status: "PENDING",
+        vehicleType: null,
+        user: {
+          role: "GUEST",
+          vehicleType: null
         }
-      });
-      console.log(`➕ GUEST vào bãi: tăng ${vehicleType}`);
+      };
     }
 
-    const populated = await session.populate("user");
-
-    return {
-      id: populated._id.toString(),
-      licensePlate: populated.licensePlate,
-      faceIdentity: populated.faceIdentity,
-      checkinTime: populated.checkinTime?.toISOString() || null,
-      checkoutTime: null,
-      status: populated.status,
-      vehicleType: populated.vehicleType,
-      user: populated.user
-    };
-
-  } catch (err) {
-    console.error("❌ Lỗi khi ghi log entry:", err.message);
-    throw new Error("Không thể ghi nhận phiên gửi xe.");
+    // 5. Nếu có loại xe, tạo GUEST user mới
+    finalUser = await User.create({
+      fullName: "Khách vãng lai",
+      email: `guest_${Date.now()}@auragate.vn`,
+      role: "GUEST",
+      faceEmbeddings: result.embeddings,
+      licensePlates: [plateText],
+      vehicleType
+    });
+    console.log("🆕 Tạo user GUEST mới:", finalUser.email);
   }
+
+  // 6. Tạo phiên gửi xe
+  const session = await ParkingSession.create({
+    user: finalUser._id,
+    licensePlate: plateText,
+    faceIdentity: finalUser.fullName,
+    checkinTime: new Date(),
+    status: "IN",
+    vehicleType: finalUser.vehicleType || vehicleType
+  });
+
+  // 7. Nếu là GUEST thì cập nhật thống kê slot
+  if (finalUser.role === "GUEST" && vehicleType) {
+    await ParkingStats.updateOne({}, {
+      $inc: {
+        carIn: vehicleType === "CAR" ? 1 : 0,
+        bikeIn: vehicleType === "BIKE" ? 1 : 0
+      }
+    });
+    console.log(`➕ GUEST vào bãi: tăng ${vehicleType}`);
+  }
+
+  const populated = await session.populate("user");
+
+  return {
+    id: populated._id.toString(),
+    licensePlate: populated.licensePlate,
+    faceIdentity: populated.faceIdentity,
+    checkinTime: populated.checkinTime?.toISOString() || null,
+    checkoutTime: null,
+    status: populated.status,
+    vehicleType: populated.vehicleType,
+    user: populated.user
+  };
 },
 
     logExit: async (_, { faceImage, plateImage }) => {
