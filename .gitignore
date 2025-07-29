@@ -1,0 +1,38 @@
+# Node.js
+node_modules/
+.env
+*.log
+
+# Build output
+backend/dist/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.turbo/
+
+# Lock files (nếu dùng yarn hoặc pnpm không cần cả 3)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python env + cache
+flask_ai_api/env*/  # Thư mục env310 hoặc env bất kỳ
+**/__pycache__/
+**/*.pyc
+
+# Python deps
+flask_ai_api/requirements.txt
+
+# Yolov5 hoặc custom YOLO model outputs
+yolo_service/debug_crops/
+yolo_service/runs/
+yolo_service/weights/
+yolo_service/__pycache__/
+yolo_service/env/
+
+# VS Code config
+.vscode/
+
+# OS/system files
+.DS_Store
+Thumbs.db
