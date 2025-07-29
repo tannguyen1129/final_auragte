@@ -10,20 +10,20 @@ frontend/out/
 frontend/build/
 frontend/.turbo/
 
-# Lock files (nếu dùng yarn hoặc pnpm không cần cả 3)
+# Lock files (chỉ giữ lại nếu bạn dùng 1 tool)
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
 # Python env + cache
-flask_ai_api/env*/  # Thư mục env310 hoặc env bất kỳ
+flask_ai_api/env*/
 **/__pycache__/
 **/*.pyc
 
-# Python deps
+# Python deps (nếu không muốn track deps)
 flask_ai_api/requirements.txt
 
-# Yolov5 hoặc custom YOLO model outputs
+# YOLO outputs
 yolo_service/debug_crops/
 yolo_service/runs/
 yolo_service/weights/
